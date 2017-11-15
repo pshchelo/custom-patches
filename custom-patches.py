@@ -118,7 +118,8 @@ def output_commits(commits, filter_regex_str, long_out=False, json_out=None):
 def parse_args():
     parser = argparse.ArgumentParser(
         description=('Using Geriit Change-Id, report patches in <old branch> '
-                     'which are missing in the <new branch>.')
+                     'which are missing in the <new branch>. '
+                     'Requires "GitPython" package (pip-)installed from PyPI.')
     )
     parser.add_argument(
         '--gerrit-uri',
@@ -175,6 +176,8 @@ def parse_args():
         default=DEFAULT_FILTER_REGEX,
         help=("Output only commits with title matching "
               "this regular expression. "
+              "Defaults is mostly suitable for OpenStack projects "
+              "and their stable branches. "
               "To output all missing commits, set it to '.*'.")
     )
 
