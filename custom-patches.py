@@ -123,7 +123,7 @@ def parse_args():
     parser.add_argument(
         '--gerrit-uri',
         default=os.getenv('CUSTOM_PATCHES_GERRIT_URI'),
-        help=('(Gerrit URI. '
+        help=('Gerrit URI. '
               'Defaults to CUSTOM_PATCHES_GERRIT_URI shell var')
     )
     parser.add_argument(
