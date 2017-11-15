@@ -176,7 +176,7 @@ def parse_args():
         default=DEFAULT_FILTER_REGEX,
         help=("Output only commits with title matching "
               "this regular expression. "
-              "Defaults is mostly suitable for OpenStack projects "
+              "Default is mostly suitable for OpenStack projects "
               "and their stable branches. "
               "To output all missing commits, set it to '.*'.")
     )
