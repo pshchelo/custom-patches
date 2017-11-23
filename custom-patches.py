@@ -58,7 +58,7 @@ def update_remotes(repo, gerrit_uri, project,
     else:
         source = repo.create_remote(source_remote, gerrit_repo)
     LOG.info("Fetching from remote %s" % gerrit_repo)
-    source.update()
+    source.update(prune=True)
     if source_remote != target_remote:
         new_gerrit_repo = os.path.join(new_gerrit_uri, new_project.strip('/'))
         if target_remote in (r.name for r in repo.remotes):
@@ -67,7 +67,7 @@ def update_remotes(repo, gerrit_uri, project,
         else:
             target = repo.create_remote(target_remote, new_gerrit_repo)
         LOG.info("Fetching from remote %s" % new_gerrit_repo)
-        target.update()
+        target.update(prune=True)
 
     return source_remote, target_remote
 
@@ -150,13 +150,13 @@ def parse_args():
     parser.add_argument(
         '--old-branch',
         default=os.getenv('CUSTOM_PATCHES_OLD_BRANCH'),
-        help=('Old branch to take patches from (typically, previous release). '
+        help=('Old branch (typically, previous release). '
               'Defaults to CUSTOM_PATCHES_OLD_BRANCH shell var')
     )
     parser.add_argument(
         '--new-branch',
         default=os.getenv('CUSTOM_PATCHES_NEW_BRANCH'),
-        help=('New branch to push patches to (typically, current release). '
+        help=('New branch (typically, current release). '
               'Defaults to CUSTOM_PATCHES_OLD_BRANCH shell var')
     )
 
@@ -169,16 +169,18 @@ def parse_args():
     parser.add_argument(
         '--json',
         default=None,
-        help='Path to JSON output file.'
+        help=('Path to JSON output file. '
+              'Default is not to generate JSON output.')
     )
     parser.add_argument(
         '--regex',
         default=DEFAULT_FILTER_REGEX,
         help=("Output only commits with title matching "
               "this regular expression. "
-              "Default is mostly suitable for OpenStack projects "
+              "Default \"%s\" is mostly suitable for OpenStack projects "
               "and their stable branches. "
-              "To output all missing commits, set it to '.*'.")
+              "To output all missing commits, set it to '.*'."
+              % DEFAULT_FILTER_REGEX)
     )
 
     args = parser.parse_args()
