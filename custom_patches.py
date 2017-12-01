@@ -4,12 +4,16 @@
 from __future__ import print_function
 
 import argparse
+import collections
 import json
 import logging
 import os
 import re
+import sys
+import urllib
 
 import git
+import requests
 
 LOG = logging.getLogger('custom-patches')
 
@@ -92,27 +96,100 @@ def find_missing_changes(repo, source_remote, target_remote,
             for i in set(old_commit_dict) - set(new_commit_dict)]
 
 
-def output_commits(commits, filter_regex_str, long_out=False, json_out=None):
+def output_commits(all_commits, filter_regex_str, long_out=False,
+                   json_out=None):
     filter_regex = re.compile(filter_regex_str)
-    commit_dict = {}
-    for c in commits:
-        commit_lines = c.message.splitlines()
-        title = commit_lines[0]
-        message = commit_lines[1:]
-        if filter_regex.match(title):
-            print("{id} {title}".format(id=c.hexsha[:8],
-                                        title=title))
-            if long_out:
-                for l in message:
-                    print(" " * 9 + l)
-                print("\n")
-            if json_out:
-                commit_dict[c.hexsha] = {'title': title, 'message': message}
+    commit_dict = collections.defaultdict(lambda: {})
+
+    for prj, commits in all_commits.items():
+        header = "Project: {proj}".format(proj=prj)
+        print('\n'+header+'\n'+'='*len(header))
+        for c in commits:
+            commit_lines = c.message.splitlines()
+            title = commit_lines[0]
+            message = commit_lines[1:]
+            if filter_regex.match(title):
+                print("{id} {title}".format(id=c.hexsha[:8],
+                                            title=title.encode('utf-8')))
+                if long_out:
+                    for l in message:
+                        print(" " * 9 + l)
+                    print("\n")
+                if json_out:
+                    commit_dict[prj][c.hexsha] = {'title': title,
+                                                  'message': message}
 
     if commit_dict:
         LOG.info("Writing JSON output to %s" % json_out)
         with open(json_out, 'w') as out:
             json.dump(commit_dict, out, indent=4)
+
+
+class GerritJSONDecoder(json.JSONDecoder):
+    """Custom JSON decoder for Gerrit API respones.
+
+    To prevent against Cross Site Script Inclusion (XSSI) attacks,
+    the JSON response body returned by Gerrit REST API starts
+    with a magic prefix line that must be stripped before feeding
+    the rest of the response body to a JSON parser:
+        )]}'
+        [... valid JSON ...]
+    """
+    def decode(self, s):
+        return super(GerritJSONDecoder, self).decode(s[4:])
+
+
+def make_gerrit_api_url(args):
+    return "{scheme}://{loc}".format(scheme=args.gerrit_proto,
+                                     loc=args.gerrit)
+
+
+def make_gerrit_ssh_uris(args):
+    gerrit_ssh = "ssh://{user}@{loc}:{port}".format(
+        user=args.gerrit_username,
+        loc=args.gerrit,
+        port=args.gerrit_ssh_port)
+    if not args.new_gerrit:
+        new_gerrit_ssh = None
+    else:
+        new_gerrit_ssh = "ssh://{user}@{loc}:{port}".format(
+            user=args.new_gerrit_username,
+            loc=args.new_gerrit,
+            port=args.new_gerrit_ssh_port)
+    return gerrit_ssh, new_gerrit_ssh
+
+
+def find_projects(gerrit_uri, project_prefix, old_branch, new_branch,
+                  gerrit_password=None, gerrit_username=None):
+    session = requests.Session()
+    if gerrit_password:
+        session.auth = requests.auth.HTTPDigestAuth(gerrit_username,
+                                                    gerrit_password)
+        gerrit_uri += '/a'
+
+    r = session.get('{url}/projects/?p={prefix}'.format(
+        url=gerrit_uri, prefix=urllib.quote(project_prefix, safe='')))
+    if r.status_code != 200:
+        LOG.error('Could not fetch list of projects with prefix {prefix} '
+                  'from URI {url}'.format(url=gerrit_uri,
+                                          prefix=project_prefix))
+        sys.exit(1)
+    projects = r.json(cls=GerritJSONDecoder)
+    found = []
+    for proj in projects:
+        r = session.get('{url}/projects/{project}/branches'.format(
+            url=gerrit_uri, project=urllib.quote(proj, safe='')))
+        if r.status_code != 200:
+            LOG.warning('Failed to list branches for project {project} '
+                        'on remote {url}'.format(project=proj, url=gerrit_uri))
+            continue
+
+        if all('refs/heads/'+b in map(lambda x: x['ref'],
+                                      r.json(cls=GerritJSONDecoder))
+               for b in (old_branch, new_branch)):
+            found.append(proj)
+    LOG.info('Projects to fetch: %s' % found)
+    return found
 
 
 def parse_args():
@@ -122,17 +199,50 @@ def parse_args():
                      'Requires "GitPython" package (pip-)installed from PyPI.')
     )
     parser.add_argument(
-        '--gerrit-uri',
-        default=os.getenv('CUSTOM_PATCHES_GERRIT_URI'),
-        help=('Gerrit URI. '
-              'Defaults to CUSTOM_PATCHES_GERRIT_URI shell var')
+        '--gerrit',
+        default=os.getenv('CUSTOM_PATCHES_GERRIT_LOC'),
+        help=('Gerrit location. '
+              'Defaults to CUSTOM_PATCHES_GERRIT_LOC shell var')
     )
     parser.add_argument(
-        '--new-gerrit-uri',
-        default=os.getenv('CUSTOM_PATCHES_NEW_GERRIT_URI'),
+        '--new-gerrit',
+        default=os.getenv('CUSTOM_PATCHES_NEW_GERRIT_LOC'),
+        help=('New Gerrit location. '
+              'Defaults to CUSTOM_PATCHES_NEW_GERRIT_LOC shell var. '
+              'If empty, falls back to Gerrit location.')
+    )
+    parser.add_argument(
+        '--gerrit-username',
+        default=os.getenv('CUSTOM_PATCHES_GERRIT_USERNAME'),
+        help=('Gerrit URI. '
+              'Defaults to CUSTOM_PATCHES_GERRIT_USERNAME shell var')
+    )
+    parser.add_argument(
+        '--new-gerrit-username',
+        default=os.getenv('CUSTOM_PATCHES_NEW_GERRIT_USERNAME'),
         help=('New Gerrit repo URI. '
-              'Defaults to CUSTOM_PATCHES_NEW_GERRIT_URI shell var. '
-              'If empty, falls back to Gerrit URI.')
+              'Defaults to CUSTOM_PATCHES_NEW_GERRIT_USERNAME shell var. '
+              'If empty, falls back to Gerrit username.')
+    )
+    parser.add_argument(
+        '--gerrit-proto',
+        default='https', choices=('http', 'https'),
+        help=("Protocol to access Gerrit's REST API")
+    )
+    parser.add_argument(
+        '--new-gerrit-proto',
+        default='https', choices=('http', 'https'),
+        help=("Protocol to access new Gerrit's REST API")
+    )
+    parser.add_argument(
+        '--gerrit-ssh-port',
+        default=29418, type=int,
+        help=("Port to access Gerrit's SSH API")
+    )
+    parser.add_argument(
+        '--new-gerrit-ssh-port',
+        default=29418, type=int,
+        help=("Port to access Gerrit's SSH API")
     )
     parser.add_argument(
         '--project',
@@ -144,8 +254,20 @@ def parse_args():
         '--new-project',
         default=os.getenv('CUSTOM_PATCHES_NEW_GERRIT_PROJECT'),
         help=('New Gerrit project name. '
-              'Defaults to CUSTOM_PATCHES_GERRIT_PROJECT shell var. '
+              'Defaults to CUSTOM_PATCHES_NEW_GERRIT_PROJECT shell var. '
               'If empty, falls back to Gerrit project name.')
+    )
+    parser.add_argument(
+        '--project-prefix',
+        default=os.getenv('CUSTOM_PATCHES_GERRIT_PROJECT_PREFIX'),
+        help=('Gerrit project name. '
+              'Defaults to CUSTOM_PATCHES_GERRIT_PROJECT_PREFIX shell var.')
+    )
+    parser.add_argument(
+        '--gerrit-http-password',
+        default=os.getenv('CUSTOM_PATCHES_GERRIT_HTTP_PASSWORD'),
+        help=('Gerrit HTTP password. '
+              'Defaults to CUSTOM_PATCHES_GERRIT_HTTP_PASSWORD shell var.')
     )
     parser.add_argument(
         '--old-branch',
@@ -184,12 +306,11 @@ def parse_args():
     )
 
     args = parser.parse_args()
-    if not (args.gerrit_uri and
-            args.project and
-            args.old_branch and
-            args.new_branch):
-        parser.error('gerrit-uri, project, old-branch, new-branch '
-                     'are required')
+    if not (args.gerrit and args.gerrit_username and
+            (args.project or args.project_prefix) and
+            args.old_branch and args.new_branch):
+        parser.error('gerrit, project or project-prefix, '
+                     'old-branch, new-branch are required')
     return args
 
 
@@ -199,16 +320,30 @@ def main():
     )
     LOG.setLevel(logging.INFO)
     args = parse_args()
-    repo_path = os.path.basename(args.project)
-    repo = prepare_repo(repo_path)
-    source_remote, target_remote = update_remotes(
-        repo, args.gerrit_uri, args.project,
-        new_gerrit_uri=args.new_gerrit_uri,
-        new_project=args.new_project)
-    missing_changes = find_missing_changes(
-        repo, source_remote, target_remote, args.old_branch, args.new_branch)
-    output_commits(missing_changes, args.regex,
-                   long_out=args.long, json_out=args.json)
+    all_missing = {}
+    if args.project_prefix:
+        api_url = make_gerrit_api_url(args)
+        found = find_projects(api_url, args.project_prefix,
+                              args.old_branch, args.new_branch,
+                              gerrit_password=args.gerrit_http_password,
+                              gerrit_username=args.gerrit_username)
+        projects = zip(found, [None]*len(found))
+    else:
+        projects = [(args.project, args.new_project)]
+    if projects:
+        gerrit_uri, new_gerrit_uri = make_gerrit_ssh_uris(args)
+        for project, new_project in projects:
+            repo = prepare_repo(os.path.basename(project))
+            source_remote, target_remote = update_remotes(
+                repo, gerrit_uri, project,
+                new_gerrit_uri=new_gerrit_uri,
+                new_project=args.new_project)
+            all_missing[new_project or project] = find_missing_changes(
+                repo, source_remote, target_remote, args.old_branch,
+                args.new_branch)
+        output_commits(all_missing, args.regex,
+                       long_out=args.long, json_out=args.json)
+
 
 if __name__ == '__main__':
     main()
