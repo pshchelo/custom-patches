@@ -1,2 +1,4 @@
+#convert to Pipfile and pipenv someday
+pbr
 GitPython
 requests

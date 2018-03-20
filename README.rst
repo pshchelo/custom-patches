@@ -18,19 +18,19 @@ and development process).
 
 Usage::
 
-    $ python custom_patches.py --help
-    usage: custom_patches.py [-h] [--gerrit GERRIT] [--new-gerrit NEW_GERRIT]
-                             [--gerrit-username GERRIT_USERNAME]
-                             [--new-gerrit-username NEW_GERRIT_USERNAME]
-                             [--gerrit-proto {http,https}]
-                             [--new-gerrit-proto {http,https}]
-                             [--gerrit-ssh-port GERRIT_SSH_PORT]
-                             [--new-gerrit-ssh-port NEW_GERRIT_SSH_PORT]
-                             [--project PROJECT] [--new-project NEW_PROJECT]
-                             [--project-prefix PROJECT_PREFIX]
-                             [--gerrit-http-password GERRIT_HTTP_PASSWORD]
-                             [--old-branch OLD_BRANCH] [--new-branch NEW_BRANCH]
-                             [--long] [--json JSON] [--regex REGEX]
+    $ custom-patches --help
+    usage: custom-patches [-h] [--gerrit GERRIT] [--new-gerrit NEW_GERRIT]
+                          [--gerrit-username GERRIT_USERNAME]
+                          [--new-gerrit-username NEW_GERRIT_USERNAME]
+                          [--gerrit-proto {http,https}]
+                          [--new-gerrit-proto {http,https}]
+                          [--gerrit-ssh-port GERRIT_SSH_PORT]
+                          [--new-gerrit-ssh-port NEW_GERRIT_SSH_PORT]
+                          [--project PROJECT] [--new-project NEW_PROJECT]
+                          [--project-prefix PROJECT_PREFIX]
+                          [--gerrit-http-password GERRIT_HTTP_PASSWORD]
+                          [--old-branch OLD_BRANCH] [--new-branch NEW_BRANCH]
+                          [--long] [--json JSON] [--regex REGEX]
 
     Using Geriit Change-Id, report patches in <old branch> which are missing in
     the <new branch>. Requires "GitPython" package (pip-)installed from PyPI.
