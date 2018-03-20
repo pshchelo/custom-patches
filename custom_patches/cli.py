@@ -1,7 +1,15 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-from __future__ import print_function
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+# implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 import argparse
 import collections
@@ -10,7 +18,7 @@ import logging
 import os
 import re
 import sys
-import urllib
+import urllib.parse
 
 import git
 import requests
@@ -168,7 +176,7 @@ def find_projects(gerrit_uri, project_prefix, old_branch, new_branch,
         gerrit_uri += '/a'
 
     r = session.get('{url}/projects/?p={prefix}'.format(
-        url=gerrit_uri, prefix=urllib.quote(project_prefix, safe='')))
+        url=gerrit_uri, prefix=urllib.parse.quote(project_prefix, safe='')))
     if r.status_code != 200:
         LOG.error('Could not fetch list of projects with prefix {prefix} '
                   'from URI {url}'.format(url=gerrit_uri,
@@ -178,7 +186,7 @@ def find_projects(gerrit_uri, project_prefix, old_branch, new_branch,
     found = []
     for proj in projects:
         r = session.get('{url}/projects/{project}/branches'.format(
-            url=gerrit_uri, project=urllib.quote(proj, safe='')))
+            url=gerrit_uri, project=urllib.parse.quote(proj, safe='')))
         if r.status_code != 200:
             LOG.warning('Failed to list branches for project {project} '
                         'on remote {url}'.format(project=proj, url=gerrit_uri))
@@ -195,8 +203,7 @@ def find_projects(gerrit_uri, project_prefix, old_branch, new_branch,
 def parse_args():
     parser = argparse.ArgumentParser(
         description=('Using Geriit Change-Id, report patches in <old branch> '
-                     'which are missing in the <new branch>. '
-                     'Requires "GitPython" package (pip-)installed from PyPI.')
+                     'which are missing in the <new branch>. ')
     )
     parser.add_argument(
         '--gerrit',
@@ -343,7 +350,3 @@ def main():
                 args.new_branch)
         output_commits(all_missing, args.regex,
                        long_out=args.long, json_out=args.json)
-
-
-if __name__ == '__main__':
-    main()
