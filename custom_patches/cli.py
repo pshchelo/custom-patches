@@ -54,6 +54,19 @@ def prepare_repo(repo_path):
     return repo
 
 
+def update_remote(repo, remote_name, gerrit_uri, project):
+
+    remote_uri = os.path.join(gerrit_uri, project.strip('/'))
+    if remote_name in (r.name for r in repo.remotes):
+        remote = repo.remotes[remote_name]
+        remote.set_url(remote_uri)
+    else:
+        remote = repo.create_remote(remote_name, remote_uri)
+    LOG.info("Fetching from remote %s" % remote_uri)
+    remote.update(prune=True)
+    remote.set_url('')
+
+
 def update_remotes(repo, gerrit_uri, project,
                    new_gerrit_uri=None, new_project=None):
     source_remote = 'custom_patches_source'
@@ -63,24 +76,10 @@ def update_remotes(repo, gerrit_uri, project,
         target_remote = source_remote
     if not new_project:
         new_project = project
-    gerrit_repo = os.path.join(gerrit_uri, project.strip('/'))
-    if source_remote in (r.name for r in repo.remotes):
-        source = repo.remotes[source_remote]
-        source.set_url(gerrit_repo)
-    else:
-        source = repo.create_remote(source_remote, gerrit_repo)
-    LOG.info("Fetching from remote %s" % gerrit_repo)
-    source.update(prune=True)
-    if source_remote != target_remote:
-        new_gerrit_repo = os.path.join(new_gerrit_uri, new_project.strip('/'))
-        if target_remote in (r.name for r in repo.remotes):
-            target = repo.remotes[target_remote]
-            target.set_url(new_gerrit_repo)
-        else:
-            target = repo.create_remote(target_remote, new_gerrit_repo)
-        LOG.info("Fetching from remote %s" % new_gerrit_repo)
-        target.update(prune=True)
 
+    update_remote(repo, source_remote, gerrit_uri, project)
+    if source_remote != target_remote:
+        update_remote(repo, target_remote, gerrit_uri, new_project)
     return source_remote, target_remote
 
 
@@ -118,7 +117,7 @@ def output_commits(all_commits, filter_regex_str, long_out=False,
             message = commit_lines[1:]
             if filter_regex.match(title):
                 print("{id} {title}".format(id=c.hexsha[:8],
-                                            title=title.encode('utf-8')))
+                                            title=title))
                 if long_out:
                     for l in message:
                         print(" " * 9 + l)
@@ -147,24 +146,18 @@ class GerritJSONDecoder(json.JSONDecoder):
         return super(GerritJSONDecoder, self).decode(s[4:])
 
 
-def make_gerrit_api_url(args):
-    return "{scheme}://{loc}".format(scheme=args.gerrit_proto,
-                                     loc=args.gerrit)
-
-
-def make_gerrit_ssh_uris(args):
-    gerrit_ssh = "ssh://{user}@{loc}:{port}".format(
-        user=args.gerrit_username,
-        loc=args.gerrit,
-        port=args.gerrit_ssh_port)
-    if not args.new_gerrit:
-        new_gerrit_ssh = None
-    else:
-        new_gerrit_ssh = "ssh://{user}@{loc}:{port}".format(
-            user=args.new_gerrit_username,
-            loc=args.new_gerrit,
-            port=args.new_gerrit_ssh_port)
-    return gerrit_ssh, new_gerrit_ssh
+def make_gerrit_repo_url(gerrit_url, username=None, password=None):
+    if not gerrit_url:
+        return gerrit_url
+    auth_string = ''
+    if username and password:
+        auth_string = '{}:{}@'.format(username,
+                                      urllib.parse.quote(password, safe=''))
+    url_parts = urllib.parse.urlparse(gerrit_url)
+    new_parts = [url_parts[0], '{}{}'.format(auth_string, url_parts[1])]
+    new_parts.extend(url_parts[2:])
+    repo_url = urllib.parse.urlunparse(new_parts)
+    return repo_url
 
 
 def find_projects(gerrit_uri, project_prefix, old_branch, new_branch,
@@ -208,54 +201,46 @@ def parse_args():
     parser.add_argument(
         '--gerrit',
         default=os.getenv('CUSTOM_PATCHES_GERRIT_LOC'),
-        help=('Gerrit location. '
+        help=('Gerrit location (full HTTP(S) URL). '
               'Defaults to CUSTOM_PATCHES_GERRIT_LOC shell var')
-    )
-    parser.add_argument(
-        '--new-gerrit',
-        default=os.getenv('CUSTOM_PATCHES_NEW_GERRIT_LOC'),
-        help=('New Gerrit location. '
-              'Defaults to CUSTOM_PATCHES_NEW_GERRIT_LOC shell var. '
-              'If empty, falls back to Gerrit location.')
     )
     parser.add_argument(
         '--gerrit-username',
         default=os.getenv('CUSTOM_PATCHES_GERRIT_USERNAME'),
-        help=('Gerrit URI. '
+        help=('Gerrit HTTP user name to access Gerrit HTTP API/repos. '
               'Defaults to CUSTOM_PATCHES_GERRIT_USERNAME shell var')
     )
     parser.add_argument(
-        '--new-gerrit-username',
-        default=os.getenv('CUSTOM_PATCHES_NEW_GERRIT_USERNAME'),
-        help=('New Gerrit repo URI. '
-              'Defaults to CUSTOM_PATCHES_NEW_GERRIT_USERNAME shell var. '
-              'If empty, falls back to Gerrit username.')
-    )
-    parser.add_argument(
-        '--gerrit-proto',
-        default='https', choices=('http', 'https'),
-        help=("Protocol to access Gerrit's REST API")
-    )
-    parser.add_argument(
-        '--new-gerrit-proto',
-        default='https', choices=('http', 'https'),
-        help=("Protocol to access new Gerrit's REST API")
-    )
-    parser.add_argument(
-        '--gerrit-ssh-port',
-        default=29418, type=int,
-        help=("Port to access Gerrit's SSH API")
-    )
-    parser.add_argument(
-        '--new-gerrit-ssh-port',
-        default=29418, type=int,
-        help=("Port to access Gerrit's SSH API")
+        '--gerrit-password',
+        default=os.getenv('CUSTOM_PATCHES_GERRIT_HTTP_PASSWORD'),
+        help=('Gerrit HTTP password. '
+              'Defaults to CUSTOM_PATCHES_GERRIT_HTTP_PASSWORD shell var.')
     )
     parser.add_argument(
         '--project',
         default=os.getenv('CUSTOM_PATCHES_GERRIT_PROJECT'),
         help=('Gerrit project name. '
               'Defaults to CUSTOM_PATCHES_GERRIT_PROJECT shell var.')
+    )
+    parser.add_argument(
+        '--new-gerrit',
+        default=os.getenv('CUSTOM_PATCHES_NEW_GERRIT_LOC'),
+        help=('New Gerrit location (full HTTP(S) URL).'
+              'Defaults to CUSTOM_PATCHES_NEW_GERRIT_LOC shell var. '
+              'If empty, falls back to Gerrit location.')
+    )
+    parser.add_argument(
+        '--new-gerrit-username',
+        default=os.getenv('CUSTOM_PATCHES_NEW_GERRIT_USERNAME'),
+        help=('New Gerrit HTTP user name to access Gerrit HTTP API/repos.'
+              'Defaults to CUSTOM_PATCHES_NEW_GERRIT_USERNAME shell var. '
+              'If empty, falls back to Gerrit username.')
+    )
+    parser.add_argument(
+        '--new-gerrit-password',
+        default=os.getenv('CUSTOM_PATCHES_GERRIT_HTTP_PASSWORD'),
+        help=('Gerrit HTTP password. '
+              'Defaults to CUSTOM_PATCHES_GERRIT_HTTP_PASSWORD shell var.')
     )
     parser.add_argument(
         '--new-project',
@@ -267,14 +252,8 @@ def parse_args():
     parser.add_argument(
         '--project-prefix',
         default=os.getenv('CUSTOM_PATCHES_GERRIT_PROJECT_PREFIX'),
-        help=('Gerrit project name. '
+        help=('Gerrit project prefix, to fetch all projects starting with it. '
               'Defaults to CUSTOM_PATCHES_GERRIT_PROJECT_PREFIX shell var.')
-    )
-    parser.add_argument(
-        '--gerrit-http-password',
-        default=os.getenv('CUSTOM_PATCHES_GERRIT_HTTP_PASSWORD'),
-        help=('Gerrit HTTP password. '
-              'Defaults to CUSTOM_PATCHES_GERRIT_HTTP_PASSWORD shell var.')
     )
     parser.add_argument(
         '--old-branch',
@@ -288,13 +267,11 @@ def parse_args():
         help=('New branch (typically, current release). '
               'Defaults to CUSTOM_PATCHES_OLD_BRANCH shell var')
     )
-
     parser.add_argument(
         '--long',
         action='store_true',
         help='Print full commit messages'
     )
-
     parser.add_argument(
         '--json',
         default=None,
@@ -313,11 +290,25 @@ def parse_args():
     )
 
     args = parser.parse_args()
-    if not (args.gerrit and args.gerrit_username and
+    # validate required args
+    if not (args.gerrit and
             (args.project or args.project_prefix) and
             args.old_branch and args.new_branch):
         parser.error('gerrit, project or project-prefix, '
                      'old-branch, new-branch are required')
+    # eithe no auth or auth with both username and password
+    if bool(args.gerrit_password) != bool(args.gerrit_username):
+        parser.error('gerrit-username and gerrit-password must be '
+                     'both definded or undefined')
+    if bool(args.new_gerrit_password) != bool(args.new_gerrit_username):
+        parser.error('new-gerrit-username and new-gerrit-password must be '
+                     'both definded or undefined')
+    if args.gerrit_password or args.new_gerrit_password:
+        LOG.warning(
+            'The cloned/updated repos will contain sensitive information '
+            '(your password) in clear text while in process of fetching. '
+            'The remote URL will be reset after fetching.')
+
     return args
 
 
@@ -329,16 +320,21 @@ def main():
     args = parse_args()
     all_missing = {}
     if args.project_prefix:
-        api_url = make_gerrit_api_url(args)
-        found = find_projects(api_url, args.project_prefix,
+        found = find_projects(args.gerrit, args.project_prefix,
                               args.old_branch, args.new_branch,
-                              gerrit_password=args.gerrit_http_password,
+                              gerrit_password=args.gerrit_password,
                               gerrit_username=args.gerrit_username)
         projects = zip(found, [None]*len(found))
     else:
         projects = [(args.project, args.new_project)]
     if projects:
-        gerrit_uri, new_gerrit_uri = make_gerrit_ssh_uris(args)
+        gerrit_uri = make_gerrit_repo_url(args.gerrit,
+                                          username=args.gerrit_username,
+                                          password=args.gerrit_password)
+        new_gerrit_uri = make_gerrit_repo_url(
+            args.new_gerrit,
+            username=args.new_gerrit_username,
+            password=args.new_gerrit_password)
         for project, new_project in projects:
             repo = prepare_repo(os.path.basename(project))
             source_remote, target_remote = update_remotes(
