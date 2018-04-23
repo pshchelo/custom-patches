@@ -79,7 +79,7 @@ def update_remotes(repo, gerrit_uri, project,
 
     update_remote(repo, source_remote, gerrit_uri, project)
     if source_remote != target_remote:
-        update_remote(repo, target_remote, gerrit_uri, new_project)
+        update_remote(repo, target_remote, new_gerrit_uri, new_project)
     return source_remote, target_remote
 
 
