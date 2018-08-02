@@ -29,8 +29,9 @@ def parse_changelog(project, branch, short_sha):
     LOG.debug('querying git as {}'.format(url))
     changelog = requests.get(url).text.splitlines()
     earliest = None
+    current_pkg = None
     for line in changelog:
-        if line.startswith(project):
+        if line.startswith(project) or line.startswith('python-'+project):
             current_pkg = line
             continue
         if '* ' + short_sha in line:
