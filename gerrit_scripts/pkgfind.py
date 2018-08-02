@@ -16,17 +16,18 @@ CHANGELOG_URL = ('{base_url}/gitweb?p=packaging/specs/{project}.git;'
 LOG = logging.getLogger('pkgfind')
 
 def get_change(change_id):
-    change = requests.get(GERRIT_CHANGE.format(base_url=GERRIT_BASE,
-                                               change=change_id))
+    url = GERRIT_CHANGE.format(base_url=GERRIT_BASE, change=change_id)
+    LOG.debug('querying gerrit as {}'.format(url))
+    change = requests.get(url)
     if change.status_code < 400:
         return json.loads(change.text[4:])[0]
 
 
 def parse_changelog(project, branch, short_sha):
-    changelog = requests.get(
-        CHANGELOG_URL.format(base_url=GERRIT_BASE,
-                             branch=branch, project=project)
-    ).text.splitlines()
+    url = CHANGELOG_URL.format(base_url=GERRIT_BASE,
+                               branch=branch, project=project)
+    LOG.debug('querying git as {}'.format(url))
+    changelog = requests.get(url).text.splitlines()
     earliest = None
     for line in changelog:
         if line.startswith(project):
@@ -44,7 +45,7 @@ def parse_args():
     )
     parser.add_argument(
         'change',
-        help=('Change id on gerrit.')
+        help=('Change-Id on gerrit.')
     )
     args = parser.parse_args()
     return args
@@ -68,4 +69,5 @@ def main():
     if pkg_version:
         print(project, pkg_version, sep=' ')
     else:
-        print('Not Found')
+        LOG.error('Not Found')
+        sys.exit(1)
