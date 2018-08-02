@@ -58,6 +58,9 @@ def main():
     args = parse_args()
     change_id = args.change
     change = get_change(change_id)
+    if not change:
+        LOG.error('Change {} is not found'.format(change_id))
+        sys.exit(1)
     project = change['project'].split('/')[-1]
     branch = change['branch']
     short_sha = change['current_revision'][:7]
