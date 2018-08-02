@@ -19,13 +19,12 @@ and development process).
 Installation
 ============
 
-In a virtual env using ``pip install .`` or (better!) with ``pipenv``
-using ``pipenv install -e .``
+In a virtual env using ``pip install git+https://github.com/pshchelo/gerrit-scripts``.
 
 Usage
 =====
 
-In the virtualenv (ir pipenv)::
+In the virtualenv::
 
     $ custom-patches --help
     usage: custom-patches [-h] [--gerrit GERRIT]
