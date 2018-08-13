@@ -17,6 +17,7 @@ import json
 import logging
 import os
 import re
+import string
 import sys
 import urllib.parse
 
@@ -83,20 +84,26 @@ def update_remotes(repo, gerrit_uri, project,
     return source_remote, target_remote
 
 
+def is_sha(s):
+    return (len(s) == 40 and all(c in string.hexdigits.lower() for c in s))
+
+
+def commit_ident(branch, remote):
+    return branch if is_sha(branch) else 'remotes/{remote}/{branch}'.format(
+        remote=remote, branch=branch)
+
+
 def find_missing_changes(repo, source_remote, target_remote,
                          old_branch, new_branch):
-    common_ancestor = repo.merge_base(
-        'remotes/{remote}/{branch}'.format(remote=source_remote,
-                                           branch=old_branch),
-        'remotes/{remote}/{branch}'.format(remote=target_remote,
-                                           branch=new_branch))[0]
 
+    old_commit_ident = commit_ident(old_branch, source_remote)
+    new_commit_ident = commit_ident(new_branch, target_remote)
+    common_ancestor = repo.merge_base(
+        old_commit_ident, new_commit_ident)[0]
     old_commits = repo.iter_commits(
-        common_ancestor.hexsha+'..remotes/{remote}/{branch}'.format(
-            remote=source_remote, branch=old_branch))
+        common_ancestor.hexsha+'..'+old_commit_ident)
     new_commits = repo.iter_commits(
-        common_ancestor.hexsha+'..remotes/{remote}/{branch}'.format(
-            remote=target_remote, branch=new_branch))
+        common_ancestor.hexsha+'..'+new_commit_ident)
     old_commit_dict = build_commit_dict(old_commits)
     new_commit_dict = build_commit_dict(new_commits)
     return [old_commit_dict[i]
@@ -195,8 +202,9 @@ def find_projects(gerrit_uri, project_prefix, old_branch, new_branch,
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description=('Using Geriit Change-Id, report patches in <old branch> '
-                     'which are missing in the <new branch>. ')
+        description=('Using Geriit Change-Id, report patches in the history '
+                     'leading to <old branch> which are missing '
+                     'in the history of <new branch>. ')
     )
     parser.add_argument(
         '--gerrit',
@@ -259,12 +267,16 @@ def parse_args():
         '--old-branch',
         default=os.getenv('CUSTOM_PATCHES_OLD_BRANCH'),
         help=('Old branch (typically, previous release). '
+              'If resembling a full-length  SHA, will be considered as '
+              'commit SHA instead of a branch name. '
               'Defaults to CUSTOM_PATCHES_OLD_BRANCH shell var')
     )
     parser.add_argument(
         '--new-branch',
         default=os.getenv('CUSTOM_PATCHES_NEW_BRANCH'),
         help=('New branch (typically, current release). '
+              'If resembling a full-length  SHA, will be considered as '
+              'commit SHA instead of a branch name. '
               'Defaults to CUSTOM_PATCHES_NEW_BRANCH shell var')
     )
     parser.add_argument(
