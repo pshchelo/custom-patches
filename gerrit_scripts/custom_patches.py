@@ -1,3 +1,4 @@
+
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -164,6 +165,7 @@ def find_projects(gerrit_uri, project_prefix, old_branch, new_branch,
                                                     gerrit_password)
         gerrit_uri += '/a'
 
+    LOG.info('Listing projects by prefix on Gerrit..')
     r = session.get('{url}/projects/?p={prefix}'.format(
         url=gerrit_uri, prefix=urllib.parse.quote(project_prefix, safe='')))
     if r.status_code != 200:
@@ -173,7 +175,9 @@ def find_projects(gerrit_uri, project_prefix, old_branch, new_branch,
         sys.exit(1)
     projects = r.json(cls=gerrit_api.GerritJSONDecoder)
     found = []
+    LOG.info("Filtering projects {p} by branches..".format(p=list(projects)))
     for proj in projects:
+        LOG.info('Listing branches for project {}'.format(proj))
         r = session.get('{url}/projects/{project}/branches'.format(
             url=gerrit_uri, project=urllib.parse.quote(proj, safe='')))
         if r.status_code != 200:
@@ -186,6 +190,68 @@ def find_projects(gerrit_uri, project_prefix, old_branch, new_branch,
                for b in (old_branch, new_branch)):
             found.append(proj)
     LOG.info('Projects to fetch: %s' % found)
+    return found
+
+
+def parse_packages_file(path_to_file):
+    commits = []
+    with open(path_to_file) as f:
+        for line in f:
+            if line.startswith('Private-Mcp-Code-Sha: '):
+                commit = line.split('Private-Mcp-Code-Sha: ')[-1].strip()
+                commits.append(commit)
+    return set(commits)
+
+
+def find_projects_by_commits(gerrit_uri, commits, new_branch,
+                             gerrit_password=None, gerrit_username=None):
+    session = requests.Session()
+    if gerrit_password:
+        session.auth = requests.auth.HTTPDigestAuth(gerrit_username,
+                                                    gerrit_password)
+        gerrit_uri += '/a'
+    projects = []
+    for commit in commits:
+        LOG.info("Looking for commit {commit}...".format(commit=commit))
+        r = session.get('{url}/changes/?q={commit}'.format(
+            url=gerrit_uri, commit=commit))
+        if r.status_code != 200:
+            LOG.error('Could not find commit with SHA-1 {commit} '
+                      'on Gerrit instance at {url}'.format(url=gerrit_uri,
+                                                           commit=commit))
+            sys.exit(1)
+        changes = r.json(cls=gerrit_api.GerritJSONDecoder)
+        if not changes:
+            LOG.error('Could not find commit with SHA-1 {commit} '
+                      'on Gerrit instance at {url}'.format(url=gerrit_uri,
+                                                           commit=commit))
+            sys.exit(1)
+        if len(changes) > 2:
+            LOG.error('Could not find commit unique with SHA-1 {commit} '
+                      'on Gerrit instance at {url}'.format(url=gerrit_uri,
+                                                           commit=commit))
+            sys.exit(1)
+        # deal with manual rebuilds when there is no change on gerrit
+        # but the commmit is mentioned in commit message
+        if len(changes) == 2:
+            # both code and spec commit were found
+            changes = [c for c in changes if '/sources/' in c['project']]
+        project = changes[0]['project']
+        if '/specs/' in project:
+            project = project.replace('/specs/', '/sources/')
+        projects.append((project, None, commit))
+    found = []
+    for proj, _, commit in projects:
+        r = session.get('{url}/projects/{project}/branches'.format(
+            url=gerrit_uri, project=urllib.parse.quote(proj, safe='')))
+        if r.status_code != 200:
+            LOG.warning('Failed to list branches for project {project} '
+                        'on remote {url}'.format(project=proj, url=gerrit_uri))
+            continue
+        data = r.json(cls=gerrit_api.GerritJSONDecoder)
+        if 'refs/heads/'+new_branch in map(lambda x: x['ref'], data):
+            found.append((proj, None, commit))
+    LOG.info('Projects to fetch: %s' % [f[0] for f in found])
     return found
 
 
@@ -289,14 +355,24 @@ def parse_args():
               "To output all missing commits, set it to '.*'."
               % DEFAULT_FILTER_REGEX)
     )
+    parser.add_argument(
+        '--mcp-packages-file',
+        help=('Path to debian Packages file to parse, overrides old_branch '
+              'and project / project-prefix. '
+              'Can be used to find commit diff between code in MCP debian '
+              'package repo and Gerrit. '
+              'WARNING: Very MCP specific as it relies on '
+              'private package metadata fields added by MCP package build '
+              'procedure to find commits from which packages were built.')
+    )
 
     args = parser.parse_args()
     # validate required args
-    if not (args.gerrit and
-            (args.project or args.project_prefix) and
-            args.old_branch and args.new_branch):
+    # TODO: more logic for validation needed with mcp-packages-file
+    if not (args.gerrit and args.new_branch and
+            (args.project or args.project_prefix or args.mcp_packages_file)):
         parser.error('gerrit, project or project-prefix, '
-                     'old-branch, new-branch are required')
+                     'old-branew-branch are required')
     # eithe no auth or auth with both username and password
     if bool(args.gerrit_password) != bool(args.gerrit_username):
         parser.error('gerrit-username and gerrit-password must be '
@@ -320,17 +396,27 @@ def main():
     LOG.setLevel(logging.INFO)
     args = parse_args()
     all_missing = {}
-    if args.project_prefix:
+    if args.mcp_packages_file:
+        commits = parse_packages_file(args.mcp_packages_file)
+        projects = find_projects_by_commits(
+            args.gerrit, commits, args.new_branch,
+            gerrit_password=args.gerrit_password,
+            gerrit_username=args.gerrit_username)
+    elif args.project_prefix:
         if not args.project:
             found = find_projects(args.gerrit, args.project_prefix,
                                   args.old_branch, args.new_branch,
                                   gerrit_password=args.gerrit_password,
                                   gerrit_username=args.gerrit_username)
-            projects = zip(found, [None]*len(found))
+            projects = zip(found,
+                           [None]*len(found),
+                           [args.old_branch]*len(found))
         else:
-            projects = [(args.project_prefix + args.project, None)]
+            projects = [(args.project_prefix + args.project,
+                         None,
+                         args.old_branch)]
     else:
-        projects = [(args.project, args.new_project)]
+        projects = [(args.project, args.new_project, args.old_branch)]
     if projects:
         gerrit_uri = make_gerrit_repo_url(args.gerrit,
                                           username=args.gerrit_username,
@@ -339,14 +425,14 @@ def main():
             args.new_gerrit,
             username=args.new_gerrit_username,
             password=args.new_gerrit_password)
-        for project, new_project in projects:
+        for project, new_project, old_branch in projects:
             repo = prepare_repo(os.path.basename(project))
             source_remote, target_remote = update_remotes(
                 repo, gerrit_uri, project,
                 new_gerrit_uri=new_gerrit_uri,
                 new_project=args.new_project)
             all_missing[new_project or project] = find_missing_changes(
-                repo, source_remote, target_remote, args.old_branch,
+                repo, source_remote, target_remote, old_branch,
                 args.new_branch)
         output_commits(all_missing, args.regex,
                        long_out=args.long, json_out=args.json)
