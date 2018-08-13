@@ -24,6 +24,9 @@ import urllib.parse
 import git
 import requests
 
+from gerrit_scripts import gerrit_api
+
+
 LOG = logging.getLogger('custom-patches')
 
 CHANGE_ID_PATTERN = re.compile(r'\nChange-Id:\s(?P<changeid>I[a-f0-9]{40})\n')
@@ -139,20 +142,6 @@ def output_commits(all_commits, filter_regex_str, long_out=False,
             json.dump(commit_dict, out, indent=4)
 
 
-class GerritJSONDecoder(json.JSONDecoder):
-    """Custom JSON decoder for Gerrit API respones.
-
-    To prevent against Cross Site Script Inclusion (XSSI) attacks,
-    the JSON response body returned by Gerrit REST API starts
-    with a magic prefix line that must be stripped before feeding
-    the rest of the response body to a JSON parser:
-        )]}'
-        [... valid JSON ...]
-    """
-    def decode(self, s):
-        return super(GerritJSONDecoder, self).decode(s[4:])
-
-
 def make_gerrit_repo_url(gerrit_url, username=None, password=None):
     if not gerrit_url:
         return gerrit_url
@@ -182,7 +171,7 @@ def find_projects(gerrit_uri, project_prefix, old_branch, new_branch,
                   'from URI {url}'.format(url=gerrit_uri,
                                           prefix=project_prefix))
         sys.exit(1)
-    projects = r.json(cls=GerritJSONDecoder)
+    projects = r.json(cls=gerrit_api.GerritJSONDecoder)
     found = []
     for proj in projects:
         r = session.get('{url}/projects/{project}/branches'.format(
@@ -193,7 +182,7 @@ def find_projects(gerrit_uri, project_prefix, old_branch, new_branch,
             continue
 
         if all('refs/heads/'+b in map(lambda x: x['ref'],
-                                      r.json(cls=GerritJSONDecoder))
+                                      r.json(cls=gerrit_api.GerritJSONDecoder))
                for b in (old_branch, new_branch)):
             found.append(proj)
     LOG.info('Projects to fetch: %s' % found)
