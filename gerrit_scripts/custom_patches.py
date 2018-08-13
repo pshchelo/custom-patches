@@ -265,7 +265,7 @@ def parse_args():
         '--new-branch',
         default=os.getenv('CUSTOM_PATCHES_NEW_BRANCH'),
         help=('New branch (typically, current release). '
-              'Defaults to CUSTOM_PATCHES_OLD_BRANCH shell var')
+              'Defaults to CUSTOM_PATCHES_NEW_BRANCH shell var')
     )
     parser.add_argument(
         '--long',
