@@ -332,11 +332,14 @@ def main():
     args = parse_args()
     all_missing = {}
     if args.project_prefix:
-        found = find_projects(args.gerrit, args.project_prefix,
-                              args.old_branch, args.new_branch,
-                              gerrit_password=args.gerrit_password,
-                              gerrit_username=args.gerrit_username)
-        projects = zip(found, [None]*len(found))
+        if not args.project:
+            found = find_projects(args.gerrit, args.project_prefix,
+                                args.old_branch, args.new_branch,
+                                gerrit_password=args.gerrit_password,
+                                gerrit_username=args.gerrit_username)
+            projects = zip(found, [None]*len(found))
+        else:
+            projects = [(args.project_prefix + args.project, None)]
     else:
         projects = [(args.project, args.new_project)]
     if projects:
