@@ -334,9 +334,9 @@ def main():
     if args.project_prefix:
         if not args.project:
             found = find_projects(args.gerrit, args.project_prefix,
-                                args.old_branch, args.new_branch,
-                                gerrit_password=args.gerrit_password,
-                                gerrit_username=args.gerrit_username)
+                                  args.old_branch, args.new_branch,
+                                  gerrit_password=args.gerrit_password,
+                                  gerrit_username=args.gerrit_username)
             projects = zip(found, [None]*len(found))
         else:
             projects = [(args.project_prefix + args.project, None)]
