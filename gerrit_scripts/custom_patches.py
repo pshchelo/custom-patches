@@ -171,32 +171,30 @@ def find_projects(gerrit_uri, project_prefix, old_branch, new_branch,
                                                     gerrit_password)
         gerrit_uri += '/a'
 
-    LOG.info('Listing projects by prefix on Gerrit..')
-    r = session.get('{url}/projects/?p={prefix}'.format(
-        url=gerrit_uri, prefix=urllib.parse.quote(project_prefix, safe='')))
+    LOG.info('Listing projects by prefix and branches on Gerrit..')
+    # NOTE(pas-ha) this will return dict of projects with prefix and
+    # either old_branch or new_branch present
+    r = session.get(
+        '{url}/projects/?p={prefix}&b={old_branch}&b={new_branch}'.format(
+            url=gerrit_uri,
+            prefix=urllib.parse.quote(project_prefix, safe=''),
+            old_branch=urllib.parse.quote(old_branch, safe=''),
+            new_branch=urllib.parse.quote(new_branch, safe=''),
+        ))
     if r.status_code != 200:
         LOG.error('Could not fetch list of projects with prefix {prefix} '
-                  'from URI {url}'.format(url=gerrit_uri,
-                                          prefix=project_prefix))
+                  'and branches from URI {url}'.format(url=gerrit_uri,
+                                                       prefix=project_prefix))
         sys.exit(1)
-    projects = r.json(cls=gerrit_api.GerritJSONDecoder)
-    found = []
-    LOG.info("Filtering projects {p} by branches..".format(p=list(projects)))
-    for proj in projects:
-        LOG.info('Listing branches for project {}'.format(proj))
-        r = session.get('{url}/projects/{project}/branches'.format(
-            url=gerrit_uri, project=urllib.parse.quote(proj, safe='')))
-        if r.status_code != 200:
-            LOG.warning('Failed to list branches for project {project} '
-                        'on remote {url}'.format(project=proj, url=gerrit_uri))
-            continue
-
-        if all('refs/heads/'+b in map(lambda x: x['ref'],
-                                      r.json(cls=gerrit_api.GerritJSONDecoder))
-               for b in (old_branch, new_branch)):
-            found.append(proj)
-    LOG.info('Projects to fetch: %s' % found)
-    return found
+    # NOTE(pas-ha) leave only those projects where both old and new branch
+    # are present
+    projects = [p for p, v in r.json(cls=gerrit_api.GerritJSONDecoder).items()
+                if set((old_branch, new_branch)) <= set(v['branches'])]
+    LOG.info('Projects to fetch: %s' % projects)
+    if not projects:
+        LOG.error("No projects found matching prefix and both branches")
+        sys.exit(1)
+    return projects
 
 
 def parse_packages_file(path_to_file):
