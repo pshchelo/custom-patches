@@ -32,7 +32,13 @@ LOG = logging.getLogger('custom-patches')
 
 CHANGE_ID_PATTERN = re.compile(r'\nChange-Id:\s(?P<changeid>I[a-f0-9]{40})\n')
 DEFAULT_FILTER_REGEX = (
-    '^(?!(Updated from global requirements|Imported Translations from Zanata))'
+    '^(?!('
+    'Updated from global requirements|'
+    'Imported Translations from Zanata|'
+    'Update UPPER_CONSTRAINTS_FILE for stable|'
+    'Update .gitreview for stable|'
+    'import zuul job settings from project-config'
+    '))'
 )
 
 
