@@ -1,4 +1,5 @@
 #convert to Pipfile and pipenv someday
 pbr
+pygerrit2
 GitPython
 requests

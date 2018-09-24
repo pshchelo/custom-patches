@@ -22,10 +22,8 @@ import string
 import sys
 import urllib.parse
 
+from pygerrit2 import rest
 import git
-import requests
-
-from gerrit_scripts import gerrit_api
 
 
 LOG = logging.getLogger('custom-patches')
@@ -165,22 +163,19 @@ def make_gerrit_repo_url(gerrit_url, username=None, password=None):
 
 def find_projects(gerrit_uri, project_prefix, old_branch, new_branch,
                   gerrit_password=None, gerrit_username=None):
-    session = requests.Session()
+    auth = None
     if gerrit_password:
-        session.auth = requests.auth.HTTPDigestAuth(gerrit_username,
-                                                    gerrit_password)
-        gerrit_uri += '/a'
-
+        auth = rest.auth.HTTPDigestAuth(gerrit_username, gerrit_password)
+    gerrit = rest.GerritRestAPI(gerrit_uri, auth=auth)
     LOG.info('Listing projects by prefix and branches on Gerrit..')
     # NOTE(pas-ha) this will return dict of projects with prefix and
     # either old_branch or new_branch present
-    r = session.get(
-        '{url}/projects/?p={prefix}&b={old_branch}&b={new_branch}'.format(
-            url=gerrit_uri,
+    projs, r = gerrit.get(
+        'projects/?p={prefix}&b={old_branch}&b={new_branch}'.format(
             prefix=urllib.parse.quote(project_prefix, safe=''),
             old_branch=urllib.parse.quote(old_branch, safe=''),
             new_branch=urllib.parse.quote(new_branch, safe=''),
-        ))
+        ), return_response=True)
     if r.status_code != 200:
         LOG.error('Could not fetch list of projects with prefix {prefix} '
                   'and branches from URI {url}'.format(url=gerrit_uri,
@@ -188,7 +183,7 @@ def find_projects(gerrit_uri, project_prefix, old_branch, new_branch,
         sys.exit(1)
     # NOTE(pas-ha) leave only those projects where both old and new branch
     # are present
-    projects = [p for p, v in r.json(cls=gerrit_api.GerritJSONDecoder).items()
+    projects = [p for p, v in projs.items()
                 if set((old_branch, new_branch)) <= set(v['branches'])]
     LOG.info('Projects to fetch: %s' % projects)
     if not projects:
@@ -209,22 +204,20 @@ def parse_packages_file(path_to_file):
 
 def find_projects_by_commits(gerrit_uri, commits, new_branch,
                              gerrit_password=None, gerrit_username=None):
-    session = requests.Session()
+    auth = None
     if gerrit_password:
-        session.auth = requests.auth.HTTPDigestAuth(gerrit_username,
-                                                    gerrit_password)
-        gerrit_uri += '/a'
+        auth = rest.auth.HTTPDigestAuth(gerrit_username, gerrit_password)
+    gerrit = rest.GerritRestAPI(gerrit_uri, auth=auth)
     projects = []
     for commit in commits:
         LOG.info("Looking for commit {commit}...".format(commit=commit))
-        r = session.get('{url}/changes/?q={commit}'.format(
-            url=gerrit_uri, commit=commit))
+        changes, r = gerrit.get('/changes/?q={commit}'.format(commit=commit),
+                                return_response=True)
         if r.status_code != 200:
             LOG.error('Could not find commit with SHA-1 {commit} '
                       'on Gerrit instance at {url}'.format(url=gerrit_uri,
                                                            commit=commit))
             sys.exit(1)
-        changes = r.json(cls=gerrit_api.GerritJSONDecoder)
         if not changes:
             LOG.error('Could not find commit with SHA-1 {commit} '
                       'on Gerrit instance at {url}'.format(url=gerrit_uri,
@@ -246,13 +239,12 @@ def find_projects_by_commits(gerrit_uri, commits, new_branch,
         projects.append((project, None, commit))
     found = []
     for proj, _, commit in projects:
-        r = session.get('{url}/projects/{project}/branches'.format(
-            url=gerrit_uri, project=urllib.parse.quote(proj, safe='')))
+        data, r = gerrit.get('/projects/{project}/branches'.format(
+            project=urllib.parse.quote(proj, safe='')), return_response=True)
         if r.status_code != 200:
             LOG.warning('Failed to list branches for project {project} '
                         'on remote {url}'.format(project=proj, url=gerrit_uri))
             continue
-        data = r.json(cls=gerrit_api.GerritJSONDecoder)
         if 'refs/heads/'+new_branch in map(lambda x: x['ref'], data):
             found.append((proj, None, commit))
     LOG.info('Projects to fetch: %s' % [f[0] for f in found])

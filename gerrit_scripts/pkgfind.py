@@ -1,31 +1,29 @@
 #!/usr/bin/env python3
 
 import argparse
-import json
 import logging
 import sys
 import urllib.parse
 
 import requests
+from pygerrit2 import rest
 
 GERRIT_BASE = 'https://gerrit.mcp.mirantis.net'
-GERRIT_CHANGE = '{base_url}/changes/{change}/?o=CURRENT_REVISION'
+GERRIT_CHANGE = '/changes/{change}/?o=CURRENT_REVISION'
 CHANGELOG_URL = ('{base_url}/gitweb?p=packaging/specs/{project}.git;'
                  'a=blob_plain;f=xenial/debian/changelog;'
                  'hb=refs/heads/{branch}')
 
 LOG = logging.getLogger('pkgfind')
 
-# TODO(pas-ha) use more common code from gerrit_api
-
 
 def get_change(gerrit_url, change_id):
-    url = GERRIT_CHANGE.format(base_url=gerrit_url,
-                               change=urllib.parse.quote(change_id, safe=''))
-    LOG.debug('querying gerrit as {}'.format(url))
-    change = requests.get(url)
-    if change.status_code < 400:
-        return json.loads(change.text[4:])
+    gerrit = rest.GerritRestAPI(GERRIT_BASE)
+    query = GERRIT_CHANGE.format(change=urllib.parse.quote(change_id, safe=''))
+    LOG.debug('querying gerrit as {}'.format(query))
+    change, r = gerrit.get(query, return_response=True)
+    if r.status_code < 400:
+        return change
 
 
 def parse_changelog(project, branch, short_sha):
