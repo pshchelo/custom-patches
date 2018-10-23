@@ -20,6 +20,7 @@ import os
 import re
 import string
 import sys
+import tempfile
 import urllib.parse
 
 from pygerrit2 import rest
@@ -258,6 +259,11 @@ def parse_args():
                      'in the history of <new branch>. ')
     )
     parser.add_argument(
+        '--workdir',
+        default=os.path.join(tempfile.gettempdir(), 'custom_patches'),
+        help=('Working directory')
+    )
+    parser.add_argument(
         '--gerrit',
         default=os.getenv('CUSTOM_PATCHES_GERRIT_LOC'),
         help=('Gerrit location (full HTTP(S) URL). '
@@ -414,6 +420,8 @@ def main():
     else:
         projects = [(args.project, args.new_project, args.old_branch)]
     if projects:
+        if not os.path.isdir(args.workdir):
+            os.mkdir(args.workdir)
         gerrit_uri = make_gerrit_repo_url(args.gerrit,
                                           username=args.gerrit_username,
                                           password=args.gerrit_password)
@@ -422,7 +430,8 @@ def main():
             username=args.new_gerrit_username,
             password=args.new_gerrit_password)
         for project, new_project, old_branch in projects:
-            repo = prepare_repo(os.path.basename(project))
+            repo = prepare_repo(os.path.join(args.workdir,
+                                             os.path.basename(project)))
             source_remote, target_remote = update_remotes(
                 repo, gerrit_uri, project,
                 new_gerrit_uri=new_gerrit_uri,
