@@ -27,7 +27,7 @@ Usage
 In the virtualenv::
 
     $ custom-patches --help
-    usage: custom-patches [-h] [--gerrit GERRIT]
+    usage: custom-patches [-h] [--workdir WORKDIR] [--gerrit GERRIT]
                           [--gerrit-username GERRIT_USERNAME]
                           [--gerrit-password GERRIT_PASSWORD] [--project PROJECT]
                           [--new-gerrit NEW_GERRIT]
@@ -37,12 +37,14 @@ In the virtualenv::
                           [--project-prefix PROJECT_PREFIX]
                           [--old-branch OLD_BRANCH] [--new-branch NEW_BRANCH]
                           [--long] [--json JSON] [--regex REGEX]
+                          [--mcp-packages-file MCP_PACKAGES_FILE]
 
-    Using Geriit Change-Id, report patches in <old branch> which are missing in
-    the <new branch>.
+    Using Geriit Change-Id, report patches in the history leading to <old branch>
+    which are missing in the history of <new branch>.
 
     optional arguments:
       -h, --help            show this help message and exit
+      --workdir WORKDIR     Working directory
       --gerrit GERRIT       Gerrit location (full HTTP(S) URL). Defaults to
                             CUSTOM_PATCHES_GERRIT_LOC shell var
       --gerrit-username GERRIT_USERNAME
@@ -73,18 +75,32 @@ In the virtualenv::
                             Gerrit project prefix, to fetch all projects starting
                             with it. Defaults to
                             CUSTOM_PATCHES_GERRIT_PROJECT_PREFIX shell var.
-     --old-branch OLD_BRANCH
-                           Old branch (typically, previous release). Defaults to
-                           CUSTOM_PATCHES_OLD_BRANCH shell var
-     --new-branch NEW_BRANCH
-                           New branch (typically, current release). Defaults to
-                           CUSTOM_PATCHES_OLD_BRANCH shell var
-     --long                Print full commit messages
-     --json JSON           Path to JSON output file. Default is not to generate
-                           JSON output.
-     --regex REGEX         Output only commits with title matching this regular
-                           expression. Default "^(?!(Updated from global
-                           requirements|Imported Translations from Zanata))" is
-                           mostly suitable for OpenStack projects and their
-                           stable branches. To output all missing commits, set it
-                           to '.*'.
+      --old-branch OLD_BRANCH
+                            Old branch (typically, previous release). If
+                            resembling a full-length SHA, will be considered as
+                            commit SHA instead of a branch name. Defaults to
+                            CUSTOM_PATCHES_OLD_BRANCH shell var
+      --new-branch NEW_BRANCH
+                            New branch (typically, current release). If resembling
+                            a full-length SHA, will be considered as commit SHA
+                            instead of a branch name. Defaults to
+                            CUSTOM_PATCHES_NEW_BRANCH shell var
+      --long                Print full commit messages
+      --json JSON           Path to JSON output file. Default is not to generate
+                            JSON output.
+      --regex REGEX         Output only commits with title matching this regular
+                            expression. Default "^(?!(Updated from global
+                            requirements|Imported Translations from Zanata|Update
+                            UPPER_CONSTRAINTS_FILE for stable|Update .gitreview
+                            for stable|import zuul job settings from project-
+                            config))" is mostly suitable for OpenStack projects
+                            and their stable branches. To output all missing
+                            commits, set it to '.*'.
+      --mcp-packages-file MCP_PACKAGES_FILE
+                            Path to debian Packages file to parse, overrides
+                            old_branch and project / project-prefix. Can be used
+                            to find commit diff between code in MCP debian package
+                            repo and Gerrit. WARNING: Very MCP specific as it
+                            relies on private package metadata fields added by MCP
+                            package build procedure to find commits from which
+                            packages were built.
