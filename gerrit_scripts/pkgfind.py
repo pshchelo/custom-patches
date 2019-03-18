@@ -71,6 +71,11 @@ def parse_args():
               'legacy numeric change id (like http(s)://<gerrit-url>/c/NNNN).')
     )
     parser.add_argument(
+        '--debug',
+        action='store_true',
+        help='Enable debug logging'
+    )
+    parser.add_argument(
         '--gerrit',
         default=GERRIT_BASE,
         help='Base Gerrit URL'
@@ -101,8 +106,11 @@ def main():
     logging.basicConfig(
         format='%(asctime)s - %(levelname)s - %(message)s'
     )
-    LOG.setLevel(logging.DEBUG)
     args = parse_args()
+    if args.debug:
+        LOG.setLevel(logging.DEBUG)
+    else:
+        LOG.setLevel(logging.WARNING)
     gerrit_url, auth = gerrit_access(args.gerrit,
                                      args.gerrit_username,
                                      args.gerrit_password,
@@ -118,5 +126,5 @@ def main():
     if pkg_version:
         print(project, pkg_version, sep=' ')
     else:
-        LOG.error('Not Found')
+        LOG.error('Commit Not Found in package changelog')
         sys.exit(1)
