@@ -2,13 +2,14 @@
 
 import argparse
 import logging
+import os
 import sys
 import urllib.parse
 
 import requests
 from pygerrit2 import rest
 
-GERRIT_BASE = 'https://gerrit.mcp.mirantis.net'
+GERRIT_BASE = 'https://gerrit.mcp.mirantis.com'
 GERRIT_CHANGE = '/changes/{change}/?o=CURRENT_REVISION'
 CHANGELOG_URL = ('{base_url}/gitweb?p=packaging/specs/{project}.git;'
                  'a=blob_plain;f=xenial/debian/changelog;'
@@ -17,8 +18,21 @@ CHANGELOG_URL = ('{base_url}/gitweb?p=packaging/specs/{project}.git;'
 LOG = logging.getLogger('pkgfind')
 
 
-def get_change(gerrit_url, change_id):
-    gerrit = rest.GerritRestAPI(GERRIT_BASE)
+def gerrit_access(gerrit_base_url, user, password, auth_mode):
+    auth = None
+    gerrit_url = gerrit_base_url
+    if user and password:
+        if auth_mode == 'digest':
+            auth_cls = rest.auth.HTTPDigestAuth
+        else:
+            auth_cls = rest.auth.HTTPBasicAuth
+        auth = auth_cls(user, password)
+        gerrit_url += '/a'
+    return gerrit_url, auth
+
+
+def get_change(gerrit_url, change_id, auth=None):
+    gerrit = rest.GerritRestAPI(gerrit_url, auth=auth)
     query = GERRIT_CHANGE.format(change=urllib.parse.quote(change_id, safe=''))
     LOG.debug('querying gerrit as {}'.format(query))
     change, r = gerrit.get(query, return_response=True)
@@ -26,12 +40,12 @@ def get_change(gerrit_url, change_id):
         return change
 
 
-def parse_changelog(project, branch, short_sha):
-    url = CHANGELOG_URL.format(base_url=GERRIT_BASE,
+def parse_changelog(gerrit, project, branch, short_sha, auth=None):
+    url = CHANGELOG_URL.format(base_url=gerrit,
                                branch=urllib.parse.quote(branch, safe=''),
                                project=urllib.parse.quote(project, safe=''))
     LOG.debug('querying git as {}'.format(url))
-    changelog = requests.get(url).text.splitlines()
+    changelog = requests.get(url, auth=auth).text.splitlines()
     earliest = None
     current_pkg = None
     for line in changelog:
@@ -47,7 +61,7 @@ def parse_changelog(project, branch, short_sha):
 def parse_args():
     parser = argparse.ArgumentParser(
         description=('Using Geriit change-id, find the oldest package '
-                     'version that contains this commit')
+                     'version that contains this commit in MCP Gerrit')
     )
     parser.add_argument(
         'change',
@@ -56,9 +70,29 @@ def parse_args():
               '<Change-Id> if it uniquely identifies change, or '
               'legacy numeric change id (like http(s)://<gerrit-url>/c/NNNN).')
     )
-    parser.add_argument('--gerrit',
-                        default=GERRIT_BASE,
-                        help='Base Gerrit URL')
+    parser.add_argument(
+        '--gerrit',
+        default=GERRIT_BASE,
+        help='Base Gerrit URL'
+    )
+    parser.add_argument(
+        '--gerrit-username',
+        default=os.getenv('CUSTOM_PATCHES_GERRIT_USERNAME'),
+        help=('Gerrit HTTP user name to access Gerrit HTTP API/repos. '
+              'Defaults to CUSTOM_PATCHES_GERRIT_USERNAME shell var')
+    )
+    parser.add_argument(
+        '--gerrit-password',
+        default=os.getenv('CUSTOM_PATCHES_GERRIT_HTTP_PASSWORD'),
+        help=('Gerrit HTTP password. '
+              'Defaults to CUSTOM_PATCHES_GERRIT_HTTP_PASSWORD shell var.')
+    )
+    parser.add_argument(
+        '--gerrit-auth-mode',
+        default='basic',
+        choices=['basic', 'digest'],
+        help=("Auth mode the Gerrit uses.")
+    )
     args = parser.parse_args()
     return args
 
@@ -67,16 +101,20 @@ def main():
     logging.basicConfig(
         format='%(asctime)s - %(levelname)s - %(message)s'
     )
-    LOG.setLevel(logging.INFO)
+    LOG.setLevel(logging.DEBUG)
     args = parse_args()
-    change = get_change(args.gerrit, args.change)
+    gerrit_url, auth = gerrit_access(args.gerrit,
+                                     args.gerrit_username,
+                                     args.gerrit_password,
+                                     args.gerrit_auth_mode)
+    change = get_change(gerrit_url, args.change, auth)
     if not change:
         LOG.error('Change {} is not found'.format(args.change))
         sys.exit(1)
     project = change['project'].split('/')[-1]
     branch = change['branch']
     short_sha = change['current_revision'][:7]
-    pkg_version = parse_changelog(project, branch, short_sha)
+    pkg_version = parse_changelog(gerrit_url, project, branch, short_sha, auth)
     if pkg_version:
         print(project, pkg_version, sep=' ')
     else:
