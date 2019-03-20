@@ -12,8 +12,9 @@ from pygerrit2 import rest
 GERRIT_BASE = 'https://gerrit.mcp.mirantis.com'
 GERRIT_CHANGE = '/changes/{change}/?o=CURRENT_REVISION'
 CHANGELOG_URL = ('{base_url}/gitweb?p=packaging/specs/{project}.git;'
-                 'a=blob_plain;f=xenial/debian/changelog;'
-                 'hb=refs/heads/{branch}')
+                 'a=blob_plain;f={changelog};hb=refs/heads/{branch}')
+SPEC_CHANGELOG = 'xenial/debian/changelog'
+DISTROS = ('xenial', 'bionic')
 
 LOG = logging.getLogger('pkgfind')
 
@@ -41,8 +42,17 @@ def get_change(gerrit_url, change_id, auth=None):
 
 
 def parse_changelog(gerrit, project, branch, short_sha, auth=None):
+    spec_changelog = SPEC_CHANGELOG
+    br_parts = set(branch.split('/'))
+    for d in DISTROS:
+        if d in br_parts:
+            spec_changelog = spec_changelog.replace(d+'/', '')
+            break
+
     url = CHANGELOG_URL.format(base_url=gerrit,
                                branch=urllib.parse.quote(branch, safe=''),
+                               changelog=urllib.parse.quote(spec_changelog,
+                                                            safe=''),
                                project=urllib.parse.quote(project, safe=''))
     LOG.debug('querying git as {}'.format(url))
     changelog = requests.get(url, auth=auth).text.splitlines()
