@@ -128,7 +128,7 @@ def main():
     change = get_change(gerrit_url, args.change, auth)
     if not change:
         LOG.error('Change {} is not found'.format(args.change))
-        sys.exit(1)
+        return 1
     project = change['project'].split('/')[-1]
     branch = change['branch']
     short_sha = change['current_revision'][:7]
@@ -137,4 +137,8 @@ def main():
         print(project, pkg_version, sep=' ')
     else:
         LOG.error('Commit Not Found in package changelog')
-        sys.exit(1)
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())

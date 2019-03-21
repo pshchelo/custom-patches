@@ -441,3 +441,7 @@ def main():
                 args.new_branch)
         output_commits(all_missing, args.regex,
                        long_out=args.long, json_out=args.json)
+
+
+if __name__ == '__main__':
+    sys.exit(main())

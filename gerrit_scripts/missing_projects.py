@@ -83,3 +83,7 @@ def main():
         set(upstream_projects) & all_reqs) - set(built_downstream)
     for prj in os_deps_projects:
         print(prj)
+
+
+if __name__ == '__main__':
+    sys.exit(main())
