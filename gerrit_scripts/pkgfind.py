@@ -48,8 +48,9 @@ def parse_changelog(gerrit, project, branch, short_sha, auth=None):
     changelog = requests.get(url, auth=auth).text.splitlines()
     earliest = None
     current_pkg = None
+    project_names = ('python-'+project, 'python-'+project.replace('_', '-'), project)
     for line in changelog:
-        if line.startswith(project) or line.startswith('python-'+project):
+        if line.startswith(project_names):
             current_pkg = line
             continue
         if '* ' + short_sha in line:
