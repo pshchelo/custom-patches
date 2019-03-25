@@ -56,7 +56,7 @@ def parse_changelog(gerrit, project, branch, short_sha, auth=None):
         if '* ' + short_sha in line:
             earliest = current_pkg
     if earliest:
-        return earliest.split()[1].strip('()')
+        return earliest
 
 
 def parse_args():
@@ -125,7 +125,7 @@ def main():
     short_sha = change['current_revision'][:7]
     pkg_version = parse_changelog(gerrit_url, project, branch, short_sha, auth)
     if pkg_version:
-        print(project, pkg_version, sep=' ')
+        print(pkg_version)
     else:
         LOG.error('Commit Not Found in package changelog')
         sys.exit(1)
