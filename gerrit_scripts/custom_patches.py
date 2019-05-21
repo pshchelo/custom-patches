@@ -41,6 +41,18 @@ DEFAULT_FILTER_REGEX = (
 )
 
 
+def mask_password(url):
+    parsed = urllib.parse.urlsplit(url)
+    if parsed.password is None:
+        return url
+    return urllib.parse.urlunsplit((
+        parsed.scheme,
+        parsed.netloc.replace(parsed.password, "***"),
+        parsed.path,
+        parsed.query,
+        parsed.fragment))
+
+
 def build_commit_dict(commits):
     commit_dict = {}
     for c in commits:
@@ -72,7 +84,7 @@ def update_remote(repo, remote_name, gerrit_uri, project):
         remote.set_url(remote_uri)
     else:
         remote = repo.create_remote(remote_name, remote_uri)
-    LOG.info("Fetching from remote %s" % remote_uri)
+    LOG.info("Fetching from remote {}".format(mask_password(remote_uri)))
     remote.update(prune=True)
     remote.set_url('')
 

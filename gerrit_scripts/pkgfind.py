@@ -19,6 +19,18 @@ DISTROS = ('xenial', 'bionic')
 LOG = logging.getLogger('pkgfind')
 
 
+def mask_password(url):
+    parsed = urllib.parse.urlsplit(url)
+    if parsed.password is None:
+        return url
+    return urllib.parse.urlunsplit((
+        parsed.scheme,
+        parsed.netloc.replace(parsed.password, "***"),
+        parsed.path,
+        parsed.query,
+        parsed.fragment))
+
+
 def gerrit_access(gerrit_base_url, user, password, auth_mode):
     auth = None
     gerrit_url = gerrit_base_url
@@ -54,7 +66,7 @@ def parse_changelog(gerrit, project, branch, short_sha, auth=None):
                                changelog=urllib.parse.quote(spec_changelog,
                                                             safe=''),
                                project=urllib.parse.quote(project, safe=''))
-    LOG.debug('querying git as {}'.format(url))
+    LOG.debug('querying git as {}'.format(mask_password(url)))
     changelog = requests.get(url, auth=auth).text.splitlines()
     earliest = None
     current_pkg = None
