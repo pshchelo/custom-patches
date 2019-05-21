@@ -1,3 +1,4 @@
+import argparse
 import json
 import os
 import re
@@ -5,24 +6,60 @@ import sys
 
 import requests
 
-UPSTREAM = 'https://review.openstack.org'
+UPSTREAM = 'https://review.opendev.org'
 DOWNSTREAM = 'https://gerrit.mcp.mirantis.com/a'
 RELEASE = os.getenv("OS_RELEASE", 'pike').lower()
 
 
-def main():
-    gerrit_password = os.getenv('GERRIT_PASSWORD')
-    if not gerrit_password:
+def parse_args():
+    parser = argparse.ArgumentParser(
+        prog='missing-projects',
+        description="Find missing downstream for upstream projects.")
+    parser.add_argument(
+        'release',
+        type=str.lower,
+        help='OpenStack release code-name to check (example: ocata)'
+    )
+    parser.add_argument(
+        '--gerrit',
+        metavar='GERRIT_URL',
+        default=os.getenv('GERRIT_URL', DOWNSTREAM),
+        help="Gerrit address."
+    )
+    parser.add_argument(
+        '--user',
+        metavar='GERRIT_USER',
+        default=os.getenv('GERRIT_USER'),
+        help="HTTP Gerrit REST API username."
+    )
+    parser.add_argument(
+        '--password',
+        metavar='GERRIT_PASSWORD',
+        default=os.getenv('GERRIT_PASSWORD'),
+        help="HTTP Gerrit REST API password."
+    )
+    parser.add_argument(
+        '--upstream',
+        metavar='UPSTREAM_URL',
+        default=os.getenv('UPSTREAM_URL', UPSTREAM),
+        help="Upstream Gerrit address."
+    )
+    return parser.parse_args()
+
+
+def validate_args(args):
+    if not args.password:
         print("gerrit HTTP password is not set, use GERRIT_PASSWORD shell var")
         sys.exit(1)
 
-    auth = requests.auth.HTTPBasicAuth(username=os.getenv('GERRIT_USER',
-                                                          'pshchelokovskyy'),
-                                       password=gerrit_password)
+
+def main():
+    args = parse_args()
+    auth = requests.auth.HTTPBasicAuth(args.user, args.password)
     # All downstream specs that have mcp/* branch
     build_specs = json.loads(requests.get(
         '{base}/projects/?p=packaging/specs/&b=mcp/{release}'.format(
-            base=DOWNSTREAM, release=RELEASE),
+            base=args.gerrit, release=args.release),
         auth=auth).text[4:])
     built_downstream = [p.replace('packaging/specs/', '')
                         for p in build_specs.keys()]
@@ -36,7 +73,7 @@ def main():
     # all upstream projects in openstack/ that have stable/pike branch
     all_upstream = json.loads(requests.get(
         '{base}/projects/?p=openstack/&b=stable/{release}'.format(
-            base=UPSTREAM, release=RELEASE)).text[4:])
+            base=args.upstream, release=args.release)).text[4:])
     upstream_projects = [p.replace('openstack/', '')
                          for p in all_upstream.keys()]
     # projects we should be building from at least stable/pike branch
@@ -45,7 +82,7 @@ def main():
     # downstream code projects that have stable/pike branch, so are mirrored
     downstream_src = json.loads(requests.get(
         '{base}/projects/?p=packaging/sources/&b=stable/{release}'.format(
-            base=DOWNSTREAM, release=RELEASE),
+            base=args.gerrit, release=args.release),
         auth=auth).text[4:])
     mirrored_downstream = [p.replace('packaging/sources/', '')
                            for p in downstream_src.keys()]
@@ -53,7 +90,7 @@ def main():
     # projects we may consider start mirroring too
     missing_src = set(need_build_upstream) - set(mirrored_downstream)
     header = "Missing code projects for {release} release".format(
-        release=RELEASE.upper())
+        release=args.release.upper())
     print(header)
     print("="*len(header))
     for l in sorted(missing_src):
@@ -68,9 +105,9 @@ def main():
         # fetch requirements file
         print("fetching deps for %s" % prj)
         reqs_file = requests.get(
-            'http://git.openstack.org/cgit/openstack/{project}/plain/'
-            'requirements.txt?h=stable/{release}'.format(
-                project=prj, release=RELEASE)).text
+            'https://opendev.org/openstack/{project}/raw/'
+            'branch/stable/{release}/requirements.txt'.format(
+                project=prj, release=args.release)).text
         # parse and combine requiremnets file
         for r in reqs_file.splitlines():
             if r.startswith('#') or not r:
@@ -78,7 +115,7 @@ def main():
             all_reqs.add(re.split('<|>|=|!', r)[0])
 
     print('=' * 40)
-    print("Projects that we miss specs for %s release" % RELEASE.upper())
+    print("Projects that we miss specs for %s release" % args.release.upper())
     os_deps_projects = (
         set(upstream_projects) & all_reqs) - set(built_downstream)
     for prj in os_deps_projects:
