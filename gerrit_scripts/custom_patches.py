@@ -303,7 +303,7 @@ def parse_args():
     )
     parser.add_argument(
         '--new-gerrit-password',
-        default=os.getenv('CUSTOM_PATCHES_GERRIT_HTTP_PASSWORD'),
+        default=os.getenv('CUSTOM_PATCHES_NEW_GERRIT_HTTP_PASSWORD'),
         help=('Gerrit HTTP password. '
               'Defaults to CUSTOM_PATCHES_GERRIT_HTTP_PASSWORD shell var.')
     )
