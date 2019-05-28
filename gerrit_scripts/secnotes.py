@@ -25,17 +25,17 @@ LAUNCHPAD_BUG_LINK = 'https://launchpad.net/bugs/'
 JIRA_TASK_LINK = 'https://mirantis.jira.com/browse/'
 
 
-STORYBOARD_ISSUE_PATTERN = re.compile('Story:\s?#?\d+|Task:\s#?\d+',
+STORYBOARD_ISSUE_PATTERN = re.compile(r'Story:\s?#?\d+|Task:\s#?\d+',
                                       re.IGNORECASE)
 LAUNCHPAD_ISSUE_PATTERN = re.compile(
-    'Closes-Bug:\s?#?\d+|'
-    'Close-Bug:\s?#?\d+|'
-    'Partial-Bug:\s?#?\d+|'
-    'Related-Bug:\s?#?\d+|'
-    'Fixes-Bug:\s?#?\d+|'
-    'Fix-Bug:\s?#?\d+|',
+    r'Closes-Bug:\s?#?\d+|'
+    r'Close-Bug:\s?#?\d+|'
+    r'Partial-Bug:\s?#?\d+|'
+    r'Related-Bug:\s?#?\d+|'
+    r'Fixes-Bug:\s?#?\d+|'
+    r'Fix-Bug:\s?#?\d+|',
     re.IGNORECASE)
-JIRA_ISSUE_PATTERN = re.compile('PROD-\d+|PROD:\d+', re.IGNORECASE)
+JIRA_ISSUE_PATTERN = re.compile(r'PROD-\d+|PROD:\d+', re.IGNORECASE)
 
 
 TRACKERS_ISSUE_PATTERN_MAP = {
@@ -150,7 +150,7 @@ def extract_bug_reference(commit):
                 'bugs_ref': []
             }
             for bug_ref in results:
-                bug_number = re.search('\d+', bug_ref)
+                bug_number = re.search(r'\d+', bug_ref)
                 parsed_issues[tracker][commit.hexsha]['bugs_ref'].append(
                     bug_number.group(0)
                 )
@@ -165,7 +165,7 @@ def parse_tracker_bug(tracker):
                 page = requests.get(tracker_link)
                 tree = lxml_html.fromstring(page.content)
                 bug_title = tree.xpath('//h1/span')[0].text
-                ossa_cve = re.search('\[OSSA-', bug_title)
+                ossa_cve = re.search(r'\[OSSA-', bug_title)
                 if ossa_cve:
                     final_result.append('{hexsha} '
                                         '{commit_title} '
