@@ -1,5 +1,0 @@
-pbr
-pygerrit2
-GitPython
-lxml
-requests
